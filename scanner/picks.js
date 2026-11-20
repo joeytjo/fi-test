@@ -14,6 +14,9 @@
 //   --markets core|all         core = 3 markets per sport (cheaper), all = every market
 //   --legs 3                   pick'em entry size (2-6)
 //   --min-ev 2                 minimum EV % for sportsbook bets
+//   --target stake             for a book with no data feed: print minimum odds worth taking
+//                              per match instead of picks (soccer match markets)
+//   --matches 12               max matches on the target card
 //   --json                     print JSON instead of text
 //
 // Credit cost per run is about: games x markets x regions (the events list is free).
@@ -82,8 +85,10 @@ async function fetchSoccer(o, leagues) {
   let rows = [];
   for (const l of leagues) {
     try {
+      // target mode only needs the sharp book, and one bookmaker costs the same as one region
+      const where = o.target ? { bookmakers: 'pinnacle' } : { regions: o.regions || 'us,eu' };
       const events = await apiGet(`/sports/${l.key}/odds`, {
-        regions: o.regions || 'us,eu', markets: o['soccer-markets'] || 'h2h,totals', oddsFormat: 'american',
+        ...where, markets: o['soccer-markets'] || 'h2h,totals', oddsFormat: 'american',
         commenceTimeFrom: iso(from), commenceTimeTo: iso(to)
       }, key);
       for (const ev of events) rows = rows.concat(E.flattenOddsApiGame(ev, l.title));
@@ -124,6 +129,23 @@ async function fetchLive(o, sports) {
 const fmt = E.fmtAmerican;
 const pct = x => (x * 100).toFixed(1) + '%';
 const time = iso => new Date(iso).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit', timeZone: process.env.PICKS_TZ || 'America/New_York', timeZoneName: 'short' });
+
+// Target-odds card for a book with no data feed: bet only if the book's decimal odds are at or above "min".
+function renderTargets(targets, book, meta) {
+  const label = book.charAt(0).toUpperCase() + book.slice(1);
+  const out = [];
+  const short = s => s.length > 16 ? s.slice(0, 15) + '.' : s;
+  out.push(`${label.toUpperCase()} TARGET ODDS · ${new Date().toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short', timeZone: process.env.PICKS_TZ || 'America/New_York' })}${meta.demo ? ' · DEMO DATA' : ''}`);
+  out.push(`Bet only if ${label}'s decimal odds are AT or ABOVE the number (= +${meta.minEv}% EV vs Pinnacle fair odds).`);
+  if (!targets.length) { out.push('', 'No sharp-priced matches in the window.'); }
+  targets.forEach(m => {
+    out.push('');
+    out.push(`${time(m.commence)} · ${m.home} vs ${m.away} (${m.sport})`);
+    out.push('  ' + m.list.map(s => `${short(s.label)} ≥${s.min.toFixed(2)}`).join(' · '));
+  });
+  if (!meta.demo) out.push('', `Credits used this run: ${creditsUsed}${creditsLeft != null ? ` · remaining: ${creditsLeft}` : ''}`);
+  return out.join('\n');
+}
 
 function render(card, meta) {
   const out = [];
@@ -173,6 +195,13 @@ function render(card, meta) {
       ? D.generateSoccer(Date.now() % 100000).flatMap(ev => E.flattenOddsApiGame(ev, 'Demo League'))
       : await fetchSoccer(o, leagues);
     items = items.concat(E.buildGameMarkets(rows));
+  }
+  if (o.target) {
+    const name = typeof o.target === 'string' ? o.target : 'your book';
+    const targets = E.targetOdds(items, { minEv: Number(o['min-ev'] || 2) / 100, maxMatches: Number(o.matches || 12) });
+    if (o.json) console.log(JSON.stringify({ targets, creditsUsed, creditsLeft }, null, 2));
+    else console.log(renderTargets(targets, name, { demo: !!o.demo, minEv: Number(o['min-ev'] || 2) }));
+    return;
   }
   const card = E.pickDaily(items, { legs: Number(o.legs || 3), minEv: Number(o['min-ev'] || 2) / 100, perGame: 1 });
   if (o.json) console.log(JSON.stringify({ ...card, creditsUsed, creditsLeft }, null, 2));

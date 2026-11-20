@@ -374,6 +374,36 @@
     return p.outcome + ' (' + p.market + ')';
   }
 
+  // ---------- target odds for books without a data feed (e.g. Stake) ----------
+  // For each upcoming match, the minimum decimal odds at which each outcome is worth
+  // betting: (1 + minEv) / fair probability. Only sharp-priced (non-consensus) markets.
+  function targetOdds(rows, opts) {
+    opts = opts || {};
+    var minEv = opts.minEv == null ? 0.02 : opts.minEv;
+    var now = opts.now || Date.now();
+    var totalLine = opts.totalLine == null ? 2.5 : opts.totalLine;
+    var matches = {};
+    rows.forEach(function (p) {
+      if (p.kind !== 'game' || p.consensus) return;
+      if (p.commence && new Date(p.commence).getTime() <= now) return;
+      if (!(p.market === 'h2h' || (p.market === 'totals' && Number(p.line) === totalLine))) return;
+      var m = matches[p.eventId] || (matches[p.eventId] = {
+        eventId: p.eventId, event: p.event, home: p.home, away: p.away, commence: p.commence, sport: p.sport, sels: {}
+      });
+      var label = p.market === 'h2h' ? (p.outcome === 'Draw' ? 'Draw' : p.outcome) : (p.outcome === 'Over' ? 'O' : 'U') + p.point;
+      m.sels[label] = { fair: 1 / p.fairProb, min: (1 + minEv) / p.fairProb };
+    });
+    return Object.keys(matches).map(function (k) { return matches[k]; })
+      .filter(function (m) { return Object.keys(m.sels).length; })
+      .sort(function (a, b) { return String(a.commence).localeCompare(String(b.commence)); })
+      .slice(0, opts.maxMatches || 12)
+      .map(function (m) {
+        var order = [m.home, 'Draw', m.away, 'O' + totalLine, 'U' + totalLine];
+        m.list = order.filter(function (l) { return m.sels[l]; }).map(function (l) { return { label: l, fair: m.sels[l].fair, min: m.sels[l].min }; });
+        return m;
+      });
+  }
+
   // Flatten a The Odds API event-odds response into rows for buildProps.
   function flattenOddsApiEvent(evt, sportTitle) {
     var rows = [];
@@ -416,7 +446,8 @@
     devigN: devigN,
     flattenOddsApiGame: flattenOddsApiGame,
     buildGameMarkets: buildGameMarkets,
-    describeGameBet: describeGameBet
+    describeGameBet: describeGameBet,
+    targetOdds: targetOdds
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

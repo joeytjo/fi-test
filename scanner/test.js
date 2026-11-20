@@ -97,3 +97,11 @@ assert.ok(home.ev > 0 && !home.consensus);
 assert.strictEqual(gm.filter(r => r.market === 'spreads').length, 2, 'both handicap sides group together');
 assert.strictEqual(E.describeGameBet(home), 'H to win');
 console.log('game markets ok');
+
+// target odds: min = (1 + ev) / fair
+const tg = E.targetOdds(gm, { minEv: 0.02 });
+assert.strictEqual(tg.length, 1);
+const h = tg[0].list.find(s => s.label === 'H');
+close(h.min, h.fair * 1.02);
+assert.deepStrictEqual(tg[0].list.map(s => s.label), ['H', 'Draw', 'A']);
+console.log('target odds ok');

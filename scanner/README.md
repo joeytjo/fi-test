@@ -30,6 +30,14 @@ NODE_USE_ENV_PROXY=1 ODDS_API_KEY=... node scanner/picks.js --sports nba,nfl --g
 
 A run costs about `games × markets × regions` credits. For example, `--sports nba,nfl --games 4` with 3 markets and 3 regions comes to roughly 72 credits. Fetching the events list is free. Set `PICKS_TZ` (for example `America/Chicago`) to choose the time zone used for game times.
 
+### Books without a data feed (e.g. Stake)
+
+`--target stake` prints a target-odds card instead of picks. For each upcoming match it gives the minimum decimal odds worth taking: the margin-free Pinnacle price plus your `--min-ev`. If Stake (or any other book) shows that price or higher, the bet is +EV. Only Pinnacle is requested, so a run costs about 2 credits per league.
+
+```
+NODE_USE_ENV_PROXY=1 ODDS_API_KEY=... node scanner/picks.js --sports soccer --target stake
+```
+
 ## Settings
 
 | Setting | Meaning |
