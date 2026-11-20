@@ -77,3 +77,23 @@ if (card.pickem) {
 }
 assert.strictEqual(E.pickDaily(demo, { now: Date.now() + 1e12 }).bets.length, 0, 'started games are excluded');
 console.log('pickDaily ok');
+
+// soccer / game markets
+const sum3 = E.devigN([150, 180, 220]).reduce((a, b) => a + b, 0);
+close(sum3, 1);
+const game = {
+  id: 'g', home_team: 'H', away_team: 'A', commence_time: new Date(Date.now() + 3600e3).toISOString(),
+  bookmakers: [
+    { key: 'pinnacle', markets: [{ key: 'h2h', outcomes: [{ name: 'H', price: 100 }, { name: 'A', price: 250 }, { name: 'Draw', price: 240 }] },
+      { key: 'spreads', outcomes: [{ name: 'H', point: -0.5, price: 100 }, { name: 'A', point: 0.5, price: -110 }] }] },
+    { key: 'bet365', markets: [{ key: 'h2h', outcomes: [{ name: 'H', price: 120 }, { name: 'A', price: 230 }, { name: 'Draw', price: 220 }] }] },
+    { key: 'betfair_ex_eu', markets: [{ key: 'h2h', outcomes: [{ name: 'H', price: 200 }, { name: 'A', price: 200 }, { name: 'Draw', price: 200 }] }] }
+  ]
+};
+const gm = E.buildGameMarkets(E.flattenOddsApiGame(game, 'L'));
+const home = gm.find(r => r.market === 'h2h' && r.outcome === 'H');
+assert.strictEqual(home.bestBook, 'bet365', 'exchanges are excluded');
+assert.ok(home.ev > 0 && !home.consensus);
+assert.strictEqual(gm.filter(r => r.market === 'spreads').length, 2, 'both handicap sides group together');
+assert.strictEqual(E.describeGameBet(home), 'H to win');
+console.log('game markets ok');

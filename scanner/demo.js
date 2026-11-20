@@ -85,7 +85,34 @@
     return rows;
   }
 
-  var api = { generate: generate, SPORTS: SPORTS };
+  // Fictional soccer fixtures with match-result, total-goals and handicap odds (Odds API row shape).
+  var CLUBS = ['Kingsbridge Athletic', 'Port Elric United', 'Valemont FC', 'Ashford Rovers', 'Castelnuovo SC',
+    'Real Montaña', 'Dorrington City', 'Brackenfield Town', 'Sankt Albrecht', 'Olympique Marivel'];
+  var SOCCER_BOOKS = ['pinnacle', 'bet365', 'williamhill', 'unibet_eu', 'draftkings', 'fanduel', 'betmgm', 'marathonbet'];
+  function generateSoccer(seed) {
+    var r = rng(seed || 7), rows = [], now = Date.now();
+    for (var i = 0; i + 1 < CLUBS.length; i += 2) {
+      var home = CLUBS[i], away = CLUBS[i + 1];
+      var evt = { id: 'soc-' + i, home_team: home, away_team: away, commence_time: new Date(now + (3 + i * 2) * 3600e3).toISOString(), bookmakers: [] };
+      var ph = 0.3 + r() * 0.3, pd = 0.24 + r() * 0.06, pa = 1 - ph - pd;
+      var pOver = 0.42 + r() * 0.2;
+      SOCCER_BOOKS.forEach(function (bk) {
+        var sharp = bk === 'pinnacle';
+        var vig = sharp ? 1.025 : 1.05 + r() * 0.03;
+        var n = function () { return sharp ? 0 : (r() - 0.5) * 0.07; };
+        var q = function (p) { return toAmerican(Math.min(0.95, Math.max(0.05, p) * vig)); };
+        var o = Math.min(0.85, Math.max(0.15, pOver + n()));
+        evt.bookmakers.push({ key: bk, markets: [
+          { key: 'h2h', outcomes: [{ name: home, price: q(ph + n()) }, { name: away, price: q(pa + n()) }, { name: 'Draw', price: q(pd + n() / 2) }] },
+          { key: 'totals', outcomes: [{ name: 'Over', point: 2.5, price: q(o) }, { name: 'Under', point: 2.5, price: q(1 - o) }] }
+        ] });
+      });
+      rows.push(evt);
+    }
+    return rows; // array of Odds API-style events
+  }
+
+  var api = { generate: generate, generateSoccer: generateSoccer, SPORTS: SPORTS };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.ScannerDemo = api;
 })(this);

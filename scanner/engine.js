@@ -242,12 +242,19 @@
     var now = opts.now || Date.now();
     var upcoming = function (p) { return !p.commence || new Date(p.commence).getTime() > now; };
 
+    // very large edges are almost always stale or mis-posted lines, so they are left out
+    var maxEv = opts.maxEv == null ? 0.25 : opts.maxEv;
+    var minBooks = opts.minBooks || 3;
     var players = {}, games = {}, bets = [];
-    props.filter(function (p) { return upcoming(p) && p.ev != null && p.ev >= minEv && !(exactOnly && p.estimated) && p.bookCount >= 3; })
+    props.filter(function (p) {
+      return upcoming(p) && p.ev != null && p.ev >= minEv && p.ev <= maxEv && !(exactOnly && p.estimated) && p.bookCount >= minBooks;
+    })
       .sort(function (a, b) { return b.ev - a.ev; })
       .forEach(function (p) {
-        if (bets.length >= maxBets || players[p.player] || (games[p.eventId] || 0) >= perGame) return;
-        players[p.player] = 1;
+        // one bet per player (props) or per market (game lines, e.g. not both Over 2.5 and Over 3)
+        var who = p.player || p.eventId + '|' + p.market;
+        if (bets.length >= maxBets || players[who] || (games[p.eventId] || 0) >= perGame) return;
+        players[who] = 1;
         games[p.eventId] = (games[p.eventId] || 0) + 1;
         bets.push(p);
       });
@@ -273,6 +280,98 @@
       }
     });
     return { bets: bets, pickem: pickem };
+  }
+
+  // ---------- game markets (match result, totals, handicaps) ----------
+  // Remove the margin from a market with any number of outcomes (e.g. 3-way soccer result).
+  function devigN(prices) {
+    var imp = prices.map(impliedProb);
+    var sum = imp.reduce(function (s, x) { return s + x; }, 0);
+    return imp.map(function (x) { return x / sum; });
+  }
+
+  // Flatten a The Odds API /odds response (game markets) into rows for buildGameMarkets.
+  // `line` keys outcomes that belong together: the total for totals, the home handicap for spreads.
+  function flattenOddsApiGame(evt, sportTitle) {
+    var rows = [];
+    var name = evt.home_team + ' vs ' + evt.away_team;
+    (evt.bookmakers || []).forEach(function (bm) {
+      (bm.markets || []).forEach(function (m) {
+        (m.outcomes || []).forEach(function (o) {
+          var line = '';
+          if (m.key === 'totals') line = String(o.point);
+          if (m.key === 'spreads') line = String(o.name === evt.home_team ? o.point : -o.point);
+          rows.push({
+            eventId: evt.id, event: name, commence: evt.commence_time,
+            sport: sportTitle || evt.sport_title || evt.sport_key, home: evt.home_team, away: evt.away_team,
+            market: m.key, line: line, outcome: o.name, point: o.point == null ? null : o.point,
+            book: bm.key, price: o.price
+          });
+        });
+      });
+    });
+    return rows;
+  }
+
+  function buildGameMarkets(rows, opts) {
+    opts = opts || {};
+    var sharpBooks = opts.sharpBooks || ['pinnacle'];
+    var exclude = opts.excludeBooks || ['betfair_ex_eu', 'betfair_ex_uk', 'betfair_ex_au', 'matchbook', 'smarkets'];
+    var groups = {};
+    rows.forEach(function (r) {
+      if (exclude.indexOf(r.book) !== -1 || r.price == null) return;
+      var key = [r.eventId, r.market, r.line].join('|');
+      var g = groups[key] || (groups[key] = { key: key, r: r, books: {}, outcomes: {} });
+      (g.books[r.book] || (g.books[r.book] = {}))[r.outcome] = Number(r.price);
+      g.outcomes[r.outcome] = r.point;
+    });
+    var out = [];
+    Object.keys(groups).forEach(function (key) {
+      var g = groups[key];
+      var names = Object.keys(g.outcomes);
+      if (names.length < 2) return;
+      var complete = function (bk) { return names.every(function (n) { return g.books[bk][n] != null; }); };
+      var src = Object.keys(g.books).filter(function (bk) { return sharpBooks.indexOf(bk) !== -1 && complete(bk); });
+      var consensus = false;
+      if (!src.length) {
+        src = Object.keys(g.books).filter(complete);
+        consensus = true;
+        if (src.length < 3) return; // too thin to trust a consensus price
+      }
+      var fair = names.map(function () { return 0; });
+      src.forEach(function (bk) {
+        devigN(names.map(function (n) { return g.books[bk][n]; })).forEach(function (p, i) { fair[i] += p / src.length; });
+      });
+      names.forEach(function (n, i) {
+        var best = null, prices = {};
+        Object.keys(g.books).forEach(function (bk) {
+          var p = g.books[bk][n];
+          if (p == null) return;
+          prices[bk] = p;
+          if (!best || americanToDecimal(p) > americanToDecimal(best.price)) best = { book: bk, price: p };
+        });
+        var r = g.r;
+        out.push({
+          id: key + '|' + n, kind: 'game',
+          eventId: r.eventId, event: r.event, commence: r.commence, sport: r.sport,
+          market: r.market, line: r.line, outcome: n, point: g.outcomes[n], home: r.home, away: r.away,
+          fairProb: fair[i], fairAmerican: probToAmerican(fair[i]),
+          bestBook: best.book, bestPrice: best.price,
+          ev: ev(fair[i], best.price), kelly: kelly(fair[i], best.price),
+          prices: prices, sharpSource: src, consensus: consensus,
+          bookCount: Object.keys(prices).length, dfsBooks: []
+        });
+      });
+    });
+    return out;
+  }
+
+  // Human-readable selection for a game-market row, e.g. "Arsenal to win", "Over 2.5 goals".
+  function describeGameBet(p) {
+    if (p.market === 'h2h') return p.outcome === 'Draw' ? 'Draw' : p.outcome + ' to win';
+    if (p.market === 'totals') return p.outcome + ' ' + p.point + ' goals';
+    if (p.market === 'spreads') return p.outcome + ' ' + (p.point > 0 ? '+' : '') + p.point + ' (handicap)';
+    return p.outcome + ' (' + p.market + ')';
   }
 
   // Flatten a The Odds API event-odds response into rows for buildProps.
@@ -313,7 +412,11 @@
     normCdf: normCdf,
     normInv: normInv,
     flattenOddsApiEvent: flattenOddsApiEvent,
-    pickDaily: pickDaily
+    pickDaily: pickDaily,
+    devigN: devigN,
+    flattenOddsApiGame: flattenOddsApiGame,
+    buildGameMarkets: buildGameMarkets,
+    describeGameBet: describeGameBet
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
