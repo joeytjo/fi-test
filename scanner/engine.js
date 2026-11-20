@@ -227,6 +227,54 @@
     return out;
   }
 
+  // ---------- daily picks ----------
+  // Chooses a short, diversified card from scanned props:
+  //  - bets:   top +EV sportsbook bets (one per player, at most `perGame` per game)
+  //  - pickem: the best `legs`-leg power-play entry (distinct players and games)
+  function pickDaily(props, opts) {
+    opts = opts || {};
+    var maxBets = opts.maxBets || 8;
+    var minEv = opts.minEv == null ? 0.02 : opts.minEv;
+    var perGame = opts.perGame || 2;
+    var exactOnly = opts.exactOnly !== false; // estimated lines are excluded from bets by default
+    var legs = opts.legs || 3;
+    var payouts = opts.payouts || DEFAULT_POWER_PAYOUTS;
+    var now = opts.now || Date.now();
+    var upcoming = function (p) { return !p.commence || new Date(p.commence).getTime() > now; };
+
+    var players = {}, games = {}, bets = [];
+    props.filter(function (p) { return upcoming(p) && p.ev != null && p.ev >= minEv && !(exactOnly && p.estimated) && p.bookCount >= 3; })
+      .sort(function (a, b) { return b.ev - a.ev; })
+      .forEach(function (p) {
+        if (bets.length >= maxBets || players[p.player] || (games[p.eventId] || 0) >= perGame) return;
+        players[p.player] = 1;
+        games[p.eventId] = (games[p.eventId] || 0) + 1;
+        bets.push(p);
+      });
+
+    var be = breakEvenPerLeg(legs, payouts[legs]);
+    var candidates = props.filter(function (p) { return upcoming(p) && p.dfsBooks && p.dfsBooks.length && p.fairProb > be; })
+      .sort(function (a, b) { return b.fairProb - a.fairProb; });
+    // an entry can only combine picks from one app's board, so build the best entry per app
+    var apps = {};
+    candidates.forEach(function (p) { p.dfsBooks.forEach(function (a) { apps[a] = 1; }); });
+    var pickem = null;
+    Object.keys(apps).forEach(function (app) {
+      var entry = [], ep = {}, eg = {};
+      candidates.forEach(function (p) {
+        if (entry.length >= legs || p.dfsBooks.indexOf(app) === -1 || ep[p.player] || eg[p.eventId]) return;
+        ep[p.player] = 1; eg[p.eventId] = 1;
+        entry.push(p);
+      });
+      if (entry.length !== legs) return;
+      var res = parlay(entry.map(function (p) { return { fairProb: p.fairProb, american: 100 }; }), { multiplier: payouts[legs] });
+      if (!pickem || res.ev > pickem.ev) {
+        pickem = { app: app, legs: entry, multiplier: payouts[legs], breakEven: be, hitProb: res.fairProb, ev: res.ev };
+      }
+    });
+    return { bets: bets, pickem: pickem };
+  }
+
   // Flatten a The Odds API event-odds response into rows for buildProps.
   function flattenOddsApiEvent(evt, sportTitle) {
     var rows = [];
@@ -264,7 +312,8 @@
     shiftLine: shiftLine,
     normCdf: normCdf,
     normInv: normInv,
-    flattenOddsApiEvent: flattenOddsApiEvent
+    flattenOddsApiEvent: flattenOddsApiEvent,
+    pickDaily: pickDaily
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

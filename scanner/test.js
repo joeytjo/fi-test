@@ -65,3 +65,15 @@ assert.ok(demo.some(r => r.ev > 0.03));
 assert.ok(demo.some(r => r.estimated && r.dfsBooks.length));
 
 console.log('all tests passed (' + demo.length + ' demo props)');
+
+// daily picks: diversified, upcoming only
+const card = E.pickDaily(demo, { legs: 3, minEv: 0.02, now: 0 });
+assert.ok(card.bets.length > 0 && card.bets.length <= 8);
+assert.strictEqual(new Set(card.bets.map(b => b.player)).size, card.bets.length);
+assert.ok(card.bets.every(b => b.ev >= 0.02 && !b.estimated));
+if (card.pickem) {
+  assert.strictEqual(card.pickem.legs.length, 3);
+  assert.strictEqual(new Set(card.pickem.legs.map(l => l.eventId)).size, 3);
+}
+assert.strictEqual(E.pickDaily(demo, { now: Date.now() + 1e12 }).bets.length, 0, 'started games are excluded');
+console.log('pickDaily ok');

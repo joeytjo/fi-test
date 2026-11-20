@@ -17,6 +17,19 @@ For live data:
 
 The key is stored only in your browser's localStorage.
 
+## Daily picks (command line)
+
+`scanner/picks.js` prints a short picks card:
+- the top +EV bets, at most one per player and two per game, exact lines only;
+- the best pick'em power-play entry within a single app.
+
+```
+node scanner/picks.js --demo                                   # fictional data
+NODE_USE_ENV_PROXY=1 ODDS_API_KEY=... node scanner/picks.js --sports nba,nfl --games 4 --legs 3
+```
+
+A run costs about `games × markets × regions` credits. For example, `--sports nba,nfl --games 4` with 3 markets and 3 regions comes to roughly 72 credits. Fetching the events list is free. Set `PICKS_TZ` (for example `America/Chicago`) to choose the time zone used for game times.
+
 ## Settings
 
 | Setting | Meaning |
