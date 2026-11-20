@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PropScope · Player Prop Scanner</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand"><span class="logo">◎</span> PropScope <small>player prop scanner</small></div>
+  <div class="source">
+    <span id="sourceBadge" class="badge demo">DEMO DATA</span>
+    <span id="quota" class="muted"></span>
+    <button id="settingsBtn" class="ghost">⚙ Data source</button>
+    <button id="refreshBtn">↻ Scan</button>
+  </div>
+</header>
+
+<section id="settings" class="panel hidden">
+  <div class="grid">
+    <label>Mode
+      <select id="mode">
+        <option value="demo">Demo (fictional data, no key)</option>
+        <option value="live">Live (The Odds API)</option>
+      </select>
+    </label>
+    <label>The Odds API key
+      <input id="apiKey" type="password" placeholder="paste key from the-odds-api.com" autocomplete="off">
+    </label>
+    <label>Regions
+      <input id="regions" value="us,us_dfs,eu" title="us_dfs = pick'em apps, eu = Pinnacle">
+    </label>
+    <label>Max games per sport
+      <input id="maxEvents" type="number" min="1" max="30" value="6">
+    </label>
+    <label>Sharp books (fair price source)
+      <input id="sharpBooks" value="pinnacle,circasports,fanduel">
+    </label>
+    <label>Remove the vig with
+      <select id="devigMethod">
+        <option value="multiplicative">Multiplicative</option>
+        <option value="power">Power</option>
+        <option value="additive">Additive</option>
+      </select>
+    </label>
+  </div>
+  <p class="muted small">The key is saved only in this browser (localStorage) and sent only to api.the-odds-api.com. Each live scan uses roughly <code>games × markets × regions</code> API credits.</p>
+  <button id="saveSettings">Save &amp; scan</button>
+</section>
+
+<nav class="tabs">
+  <button data-tab="ev" class="active">+EV Bets</button>
+  <button data-tab="pickem">Pick'em</button>
+  <span class="spacer"></span>
+  <span id="status" class="muted"></span>
+</nav>
+
+<section class="filters">
+  <div class="chips" id="sportChips"></div>
+  <input id="search" placeholder="Search player or game…">
+  <select id="marketFilter"><option value="">All markets</option></select>
+  <select id="bookFilter"><option value="">Any book</option></select>
+  <label class="inline" id="minEvWrap">Min EV <input id="minEv" type="number" step="0.5" value="1"> %</label>
+  <label class="inline hidden" id="minEdgeWrap">Min edge <input id="minEdge" type="number" step="0.5" value="0"> %</label>
+  <label class="inline"><input type="checkbox" id="hideEst"> Exact lines only</label>
+</section>
+
+<main class="layout">
+  <div class="tablewrap">
+    <table id="board">
+      <thead></thead>
+      <tbody></tbody>
+    </table>
+    <p id="empty" class="empty hidden">No props match your filters.</p>
+  </div>
+
+  <aside class="slip">
+    <div class="slip-head">
+      <h3>Parlay builder <span id="legCount" class="pill">0</span></h3>
+      <button id="clearSlip" class="ghost small">Clear</button>
+    </div>
+    <div class="slip-mode">
+      <label><input type="radio" name="slipMode" value="book" checked> Sportsbook parlay</label>
+      <label><input type="radio" name="slipMode" value="pickem"> Pick'em power play</label>
+    </div>
+    <ul id="legs"></ul>
+    <div id="payoutEditor" class="hidden">
+      <p class="muted small">Power-play payouts (edit to match your app):</p>
+      <div id="payouts" class="payouts"></div>
+    </div>
+    <label class="inline">Stake $ <input id="stake" type="number" min="1" value="10"></label>
+    <div id="slipSummary" class="summary"></div>
+    <p id="slipWarn" class="warn hidden"></p>
+  </aside>
+</main>
+
+<footer class="muted small">
+  Fair odds come from removing the bookmaker margin from sharp-book prices. Lines marked <span class="est">est.</span> are pick'em lines that differ from the sportsbook line; their fair odds are estimated with a normal approximation, so treat them with more caution.
+  This tool gives estimates, not guarantees. Bet responsibly.
+</footer>
+
+<script src="engine.js"></script>
+<script src="demo.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
