@@ -381,12 +381,19 @@
     opts = opts || {};
     var minEv = opts.minEv == null ? 0.02 : opts.minEv;
     var now = opts.now || Date.now();
-    var totalLine = opts.totalLine == null ? 2.5 : opts.totalLine;
+    // totals: use opts.totalLine if given, else each match's main line (Over closest to 50/50)
+    var mainTotal = {};
+    rows.forEach(function (p) {
+      if (p.kind !== 'game' || p.consensus || p.market !== 'totals' || p.outcome !== 'Over') return;
+      var cur = mainTotal[p.eventId];
+      if (cur == null || Math.abs(p.fairProb - 0.5) < Math.abs(cur.p - 0.5)) mainTotal[p.eventId] = { line: Number(p.line), p: p.fairProb };
+    });
     var matches = {};
     rows.forEach(function (p) {
       if (p.kind !== 'game' || p.consensus) return;
       if (p.commence && new Date(p.commence).getTime() <= now) return;
-      if (!(p.market === 'h2h' || (p.market === 'totals' && Number(p.line) === totalLine))) return;
+      var tl = opts.totalLine != null ? opts.totalLine : (mainTotal[p.eventId] || {}).line;
+      if (!(p.market === 'h2h' || (p.market === 'totals' && Number(p.line) === tl))) return;
       var m = matches[p.eventId] || (matches[p.eventId] = {
         eventId: p.eventId, event: p.event, home: p.home, away: p.away, commence: p.commence, sport: p.sport, sels: {}
       });
@@ -398,7 +405,8 @@
       .sort(function (a, b) { return String(a.commence).localeCompare(String(b.commence)); })
       .slice(0, opts.maxMatches || 12)
       .map(function (m) {
-        var order = [m.home, 'Draw', m.away, 'O' + totalLine, 'U' + totalLine];
+        var order = [m.home, 'Draw', m.away];
+        Object.keys(m.sels).forEach(function (l) { if (/^O/.test(l) && order.indexOf(l) === -1) order.push(l, 'U' + l.slice(1)); });
         m.list = order.filter(function (l) { return m.sels[l]; }).map(function (l) { return { label: l, fair: m.sels[l].fair, min: m.sels[l].min }; });
         return m;
       });

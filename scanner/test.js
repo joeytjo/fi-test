@@ -105,3 +105,12 @@ const h = tg[0].list.find(s => s.label === 'H');
 close(h.min, h.fair * 1.02);
 assert.deepStrictEqual(tg[0].list.map(s => s.label), ['H', 'Draw', 'A']);
 console.log('target odds ok');
+
+// target odds pick each match's main total line
+const tGame = JSON.parse(JSON.stringify(game));
+tGame.bookmakers[0].markets.push({ key: 'totals', outcomes: [
+  { name: 'Over', point: 2.5, price: -150 }, { name: 'Under', point: 2.5, price: 130 },
+  { name: 'Over', point: 3, price: -102 }, { name: 'Under', point: 3, price: -108 }] });
+const tg2 = E.targetOdds(E.buildGameMarkets(E.flattenOddsApiGame(tGame, 'L')));
+assert.deepStrictEqual(tg2[0].list.map(s => s.label), ['H', 'Draw', 'A', 'O3', 'U3']);
+console.log('main total line ok');
